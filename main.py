@@ -7,28 +7,127 @@ SELECT *
 FROM students
 WHERE reg_date > '2024-01-01';
 # 2. Вивести всі курси категорії `"Data Science"`.
+SELECT *
+FROM courses
+WHERE category = 'Data Science';
+
 
 # ## **Задача 2. Групування та агрегація**
 
 # 1. Порахувати кількість студентів у кожному місті.
+SELECT city, COUNT(*) AS student_count
+FROM students
+GROUP BY city;
 # 2. Порахувати кількість курсів у кожній категорії.
+SELECT category, COUNT(*) AS course_count
+FROM courses
+GROUP BY category;
 # 3. Порахувати середню оцінку по кожному курсу.
+SELECT 
+    c.course_name,
+    AVG(p.score) AS avg_score
+FROM courses c
+JOIN enrollments e ON c.course_id = e.course_id
+JOIN progress p ON e.enrollment_id = p.enrollment_id
+GROUP BY c.course_name;
+
 
 # ## **Задача 3. JOIN‑аналіз**
 
 # 1. Вивести список курсів разом з іменами викладачів.
+SELECT 
+    c.course_name,
+    i.full_name AS instructor_name
+FROM courses c
+JOIN instructors i 
+    ON c.instructor_id = i.instructor_id
+ORDER BY c.course_name;
 # 2. Вивести студентів та назви курсів, на які вони записані.
+SELECT
+    s.full_name AS student_name,
+    c.course_name
+FROM students s
+JOIN enrollments e 
+    ON s.student_id = e.student_id
+JOIN courses c 
+    ON e.course_id = c.course_id
+ORDER BY s.full_name, c.course_name;
 # 3. Порахувати, скільки студентів у кожного викладача.
+SELECT
+    i.full_name AS instructor_name,
+    COUNT(DISTINCT e.student_id) AS students_count
+FROM instructors i
+JOIN courses c 
+    ON i.instructor_id = c.instructor_id
+JOIN enrollments e 
+    ON c.course_id = e.course_id
+GROUP BY i.full_name
+ORDER BY students_count DESC;
+
 
 # ## **Задача 4. Аналітика прогресу**
 
 # 1. Порахувати середню оцінку кожного студента.
+SELECT
+    s.full_name,
+    ROUND(AVG(p.score), 2) AS avg_score
+FROM students s
+JOIN enrollments e 
+    ON s.student_id = e.student_id
+JOIN progress p 
+    ON e.enrollment_id = p.enrollment_id
+GROUP BY s.full_name
+ORDER BY avg_score DESC;
 # 2. Порахувати відсоток завершених уроків для кожного курсу.
+SELECT
+    c.course_name,
+    ROUND(
+        100.0 * 
+        SUM(CASE WHEN p.completed THEN 1 ELSE 0 END) 
+        / COUNT(*)
+    , 2) AS completed_percent
+FROM courses c
+JOIN enrollments e 
+    ON c.course_id = e.course_id
+JOIN progress p 
+    ON e.enrollment_id = p.enrollment_id
+GROUP BY c.course_name
+ORDER BY completed_percent DESC;
 # 3. Знайти студентів, які завершили всі уроки у своїх курсах.
+SELECT
+    s.full_name
+FROM students s
+JOIN enrollments e 
+    ON s.student_id = e.student_id
+JOIN progress p 
+    ON e.enrollment_id = p.enrollment_id
+GROUP BY s.student_id, s.full_name
+HAVING 
+    COUNT(*) = SUM(CASE WHEN p.completed THEN 1 ELSE 0 END);
+
 
 # ## **Задача 5. Віконні функції**
 
 # 1. Для кожного курсу визначити рейтинг студентів за середнім балом.
+SELECT
+    c.course_name,
+    s.full_name,
+    ROUND(AVG(p.score), 2) AS avg_score,
+    RANK() OVER (
+        PARTITION BY c.course_id
+        ORDER BY AVG(p.score) DESC
+    ) AS rank_in_course
+FROM courses c
+JOIN enrollments e 
+    ON c.course_id = e.course_id
+JOIN students s 
+    ON e.student_id = s.student_id
+JOIN progress p 
+    ON e.enrollment_id = p.enrollment_id
+GROUP BY 
+    c.course_id, c.course_name, 
+    s.student_id, s.full_name
+ORDER BY c.course_name, rank_in_course;
 # 2. Порахувати кумулятивну кількість уроків, завершених студентом у хронологічному порядку.
 #     - *Покрокове виконання та пояснення*
         
@@ -142,3 +241,26 @@ WHERE reg_date > '2024-01-01';
 #         Додамо групування
         
 # 3. Для кожної категорії курсів знайти топ‑1 курс за кількістю студентів.
+SELECT
+    category,
+    course_name,
+    students_count
+FROM (
+    SELECT
+        c.category,
+        c.course_name,
+        COUNT(DISTINCT e.student_id) AS students_count,
+        RANK() OVER (
+            PARTITION BY c.category
+            ORDER BY COUNT(DISTINCT e.student_id) DESC
+        ) AS rnk
+    FROM courses c
+    JOIN enrollments e 
+        ON c.course_id = e.course_id
+    GROUP BY 
+        c.category,
+        c.course_id,
+        c.course_name
+) t
+WHERE rnk = 1
+ORDER BY category;
